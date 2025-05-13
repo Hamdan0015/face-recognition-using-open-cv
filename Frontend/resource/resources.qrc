@@ -7,5 +7,6 @@
     <file>icons/video_upload.svg</file>
     <file>icons/sun.svg</file>
     <file>icons/moon.svg</file>
+    <file>icons/upload.svg</file>
 </qresource>
 </RCC>

@@ -274,7 +274,7 @@ class Dashboard(QtWidgets.QMainWindow):
         live_feed_card = self.create_card(
             "Live Feed",
             "Real-time facial recognition monitoring",
-            ":/icons/live_feed.svg",
+            ":/icons/video_upload.svg",
             "liveFeed"
         )
         live_feed_card.mousePressEvent = lambda _: self.show_page(1)
@@ -292,7 +292,7 @@ class Dashboard(QtWidgets.QMainWindow):
         video_upload_card = self.create_card(
             "Video Upload",
             "Process recorded videos for face detection",
-            ":/icons/video_upload.svg",
+            ":/icons/live_feed.svg",
             "videoUpload"
         )
         video_upload_card.mousePressEvent = lambda _: self.show_page(3)
@@ -574,22 +574,19 @@ class Dashboard(QtWidgets.QMainWindow):
         form_layout.setSpacing(20)
         form_layout.setLabelAlignment(QtCore.Qt.AlignLeft)
 
-        # Form fields
-        # Full Name
+        # Form fields with dynamic text colors
         full_name_label = QtWidgets.QLabel("Full Name")
         full_name_label.setObjectName("formLabel")
         self.full_name = QtWidgets.QLineEdit()
         self.full_name.setPlaceholderText("Enter person's name")
         self.full_name.setObjectName("formInput")
 
-        # Roll Number
         roll_no_label = QtWidgets.QLabel("Roll Number")
         roll_no_label.setObjectName("formLabel")
         self.roll_no = QtWidgets.QLineEdit()
         self.roll_no.setPlaceholderText("Enter roll number (e.g. BP-2023)")
         self.roll_no.setObjectName("formInput")
 
-        # Phone Number
         phone_no_label = QtWidgets.QLabel("Phone Number")
         phone_no_label.setObjectName("formLabel")
         self.phone_no = QtWidgets.QLineEdit()
@@ -608,20 +605,12 @@ class Dashboard(QtWidgets.QMainWindow):
         image_layout.setContentsMargins(20, 20, 20, 20)
         image_layout.setSpacing(15)
 
-        # Image preview
+        # Image preview with dynamic colors
         self.image_preview = QtWidgets.QLabel()
         self.image_preview.setAlignment(QtCore.Qt.AlignCenter)
         self.image_preview.setMinimumSize(200, 200)
         self.image_preview.setText("Upload a clear face image")
         self.image_preview.setObjectName("imagePreview")
-        self.image_preview.setStyleSheet("""
-            QLabel {
-                border: 2px dashed #aaa;
-                border-radius: 5px;
-                color: #777;
-                background-color: #f8f8f8;
-            }
-        """)
 
         # Camera/Upload buttons
         btn_container = QtWidgets.QWidget()
@@ -665,6 +654,67 @@ class Dashboard(QtWidgets.QMainWindow):
         main_layout.addStretch()
 
         self.stacked_widget.addWidget(page)
+
+        # Apply initial theme styling
+        self.update_data_entry_theme()
+
+    def update_data_entry_theme(self):
+        """Update the data entry page colors based on current theme"""
+        if self.dark_mode:  # Dark mode
+            text_color = "#FFFFFF"  # White text
+            placeholder_color = "#AAAAAA"  # Light gray placeholder
+            border_color = "#7F00FF"  # Purple border for dark mode
+            bg_color = "#252540"  # Dark background
+        else:  # Light mode
+            text_color = "#000000"  # Black text
+            placeholder_color = "#777777"  # Dark gray placeholder
+            border_color = "#AAAAAA"  # Light border for light mode
+            bg_color = "#F8F8F8"  # Light background
+
+        # Apply the styles
+        self.setStyleSheet(f"""
+            /* Form labels */
+            QLabel#formLabel {{
+                color: {text_color};
+                font-size: 14px;
+            }}
+
+            /* Image preview */
+            QLabel#imagePreview {{
+                color: {placeholder_color};
+                border: 2px dashed {border_color};
+                border-radius: 5px;
+                background-color: {bg_color};
+                font-size: 14px;
+            }}
+
+            /* Form inputs */
+            QLineEdit#formInput {{
+                color: {text_color};
+                background-color: {'#1A1A2E' if self.dark_mode else '#FFFFFF'};
+                border: 1px solid {border_color};
+            }}
+
+            /* Page title */
+            QLabel#pageTitle {{
+                color: {'#7F00FF' if self.dark_mode else '#4A90E2'};
+            }}
+        """)
+
+    def toggle_theme(self):
+        """Toggle between light and dark themes"""
+        self.dark_mode = not self.dark_mode
+        if self.dark_mode:
+            self.apply_dark_theme()
+        else:
+            self.apply_light_theme()
+        # Update all toggle buttons
+        self.theme_toggle.setChecked(self.dark_mode)
+        if hasattr(self, 'page_theme_toggle'):
+            self.page_theme_toggle.setChecked(self.dark_mode)
+        # Update data entry page specifically
+        self.update_data_entry_theme()
+
 
     def capture_image(self):
         # Placeholder for camera capture functionality
@@ -734,16 +784,25 @@ class Dashboard(QtWidgets.QMainWindow):
     def create_video_upload_page(self):
         page = QtWidgets.QWidget()
         page.setObjectName("videoUploadPage")
-        layout = QtWidgets.QVBoxLayout(page)
-        layout.setContentsMargins(60, 60, 60, 60)
+        main_layout = QtWidgets.QVBoxLayout(page)
+        main_layout.setContentsMargins(60, 40, 60, 60)
+        main_layout.setSpacing(30)
 
-        # Top bar with back button and theme toggle
-        top_bar = QtWidgets.QHBoxLayout()
+        # Header Section
+        header_layout = QtWidgets.QVBoxLayout()
+        header_layout.setAlignment(QtCore.Qt.AlignCenter)
+        main_layout.addLayout(header_layout)
+
+        # Control Bar
+        control_bar = QtWidgets.QHBoxLayout()
+        control_bar.setContentsMargins(0, 20, 0, 20)
 
         back_btn = self.create_back_button()
-        top_bar.addWidget(back_btn)
+        control_bar.addWidget(back_btn)
 
-        top_bar.addStretch()
+        page_title = QtWidgets.QLabel("Video Upload")
+        page_title.setObjectName("pageTitle")
+        control_bar.addWidget(page_title, 1, QtCore.Qt.AlignCenter)
 
         self.page_theme_toggle = QtWidgets.QPushButton()
         self.page_theme_toggle.setCheckable(True)
@@ -772,28 +831,72 @@ class Dashboard(QtWidgets.QMainWindow):
             }
         """)
         self.page_theme_toggle.clicked.connect(self.toggle_theme)
-        top_bar.addWidget(self.page_theme_toggle)
+        control_bar.addWidget(self.page_theme_toggle)
 
-        layout.addLayout(top_bar)
+        main_layout.addLayout(control_bar)
 
-        # Page title
-        title = QtWidgets.QLabel("Video Upload")
-        title.setObjectName("pageTitle")
+        # Main Content - Using Card Styling
+        content_card = QtWidgets.QFrame()
+        content_card.setObjectName("videoUploadCard")  # Using card class
+        content_layout = QtWidgets.QVBoxLayout(content_card)
+        content_layout.setContentsMargins(40, 40, 40, 40)
+        content_layout.setSpacing(30)
 
-        # Video upload form
-        self.video_path = QtWidgets.QLineEdit()
-        self.video_path.setPlaceholderText("Enter video file path")
+        # Drop Zone - Styled as Card
+        drop_card = QtWidgets.QFrame()
+        drop_card.setObjectName("videoUploadCard")  # Using card class
+        drop_card.setMinimumSize(700, 300)
+        drop_card.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
 
-        process_btn = QtWidgets.QPushButton("Process Video")
-        process_btn.setObjectName("actionButton")
+        drop_layout = QtWidgets.QVBoxLayout(drop_card)
+        drop_layout.setContentsMargins(50, 50, 50, 50)
+        drop_layout.setSpacing(20)
+        drop_layout.setAlignment(QtCore.Qt.AlignCenter)
 
-        layout.addWidget(title, 0, QtCore.Qt.AlignCenter)
-        layout.addWidget(self.video_path)
-        layout.addWidget(process_btn)
-        layout.addStretch()
+        # Upload Icon - Using cardIcon class
+        upload_icon = QtWidgets.QLabel()
+        upload_icon.setPixmap(QtGui.QPixmap(r"C:\Users\hamda\OneDrive\Documents\GitHub\INSIGHT_X\Frontend\resource\icons\upload.svg").scaled(80, 80,QtCore.Qt.KeepAspectRatio,QtCore.Qt.SmoothTransformation))
+        upload_icon.setObjectName("cardIcon")
+        upload_icon.setAlignment(QtCore.Qt.AlignCenter)
+        drop_layout.addWidget(upload_icon)
 
+        # Instruction Text - Using cardDescription class
+        instruction_text = QtWidgets.QLabel(
+            "Drag and drop video file\n"
+            "Upload a video to detect and recognize faces"
+        )
+        instruction_text.setObjectName("cardDescription")
+        instruction_text.setAlignment(QtCore.Qt.AlignCenter)
+        instruction_text.setWordWrap(True)
+        drop_layout.addWidget(instruction_text)
+
+        content_layout.addWidget(drop_card, 0, QtCore.Qt.AlignCenter)
+
+        # Select Button - Using actionButton class
+        select_btn = QtWidgets.QPushButton("Select Video")
+        select_btn.setObjectName("actionButton")
+        select_btn.setFixedSize(220, 50)
+        select_btn.clicked.connect(self.select_video)
+        content_layout.addWidget(select_btn, 0, QtCore.Qt.AlignCenter)
+
+        main_layout.addWidget(content_card)
         self.stacked_widget.addWidget(page)
+        self.update_video_upload_theme()
 
+    def update_video_upload_theme(self):
+        """Theme updates handled by main apply_light_theme/apply_dark_theme methods"""
+        # No additional styling needed - using existing card classes
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def select_video(self):
+        options = QtWidgets.QFileDialog.Options()
+        file_path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Select Video File", "",
+            "Video Files (*.mp4 *.avi *.mov)", options=options
+        )
+        if file_path:
+            self.video_path = file_path
     ###########################################################################
     # UTILITY METHODS
     ###########################################################################
