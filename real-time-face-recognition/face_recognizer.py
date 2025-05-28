@@ -6,161 +6,136 @@ import pyaudio
 import threading
 import scipy.signal
 import time
+from PyQt5.QtCore import QObject, pyqtSignal
 
 
-def detect_light_status(frame):
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    brightness = np.mean(gray)
-    light_threshold = 80
-    return "Lights ON" if brightness > light_threshold else "Lights OFF"
+class FaceRecognizer(QObject):
+    # Signals to communicate with UI thread
+    person_detected = pyqtSignal(dict)  # {name, roll_no, contact}
+    status_updated = pyqtSignal(dict)  # {light_status, fan_status, headcount}
+    frame_processed = pyqtSignal(object)  # Processed frame (for display)
 
+    def __init__(self):
+        super().__init__()
+        self.running = False
+        self.recognizer = cv2.face.LBPHFaceRecognizer_create()
+        self.recognizer.read('trainer.yml')
+        self.net = cv2.dnn.readNetFromCaffe("deploy.prototxt", "res10_300x300_ssd_iter_140000.caffemodel")
+        self.users = self._load_users()
+        self.current_status = {
+            'light_status': "OFF",
+            'fan_status': "OFF",
+            'headcount': 0
+        }
 
-fan_status = "Fan OFF"
-last_fan_status = "Fan OFF"
-fan_status_lock = threading.Lock()
+        # Start fan detection thread
+        self.fan_thread = threading.Thread(target=self.detect_fan_status, daemon=True)
+        self.fan_thread.start()
 
- 
-def detect_fan_status(threshold=6000, smoothing_factor=5):
+    def _load_users(self):
+        try:
+            with open('names.json', 'r') as f:
+                return json.load(f)
+        except:
+            return {}
 
-    global fan_status, last_fan_status
-    CHUNK = 2048
-    FORMAT = pyaudio.paInt16
-    CHANNELS = 1
-    RATE = 44100
-    recent_amplitudes = []
+    def detect_fan_status(self, threshold=6000, smoothing_factor=5):
+        CHUNK = 2048
+        FORMAT = pyaudio.paInt16
+        CHANNELS = 1
+        RATE = 44100
+        recent_amplitudes = []
 
-    p = pyaudio.PyAudio()
-    stream = p.open(format=FORMAT, channels=CHANNELS, rate=RATE,
-                    input=True, frames_per_buffer=CHUNK)
+        p = pyaudio.PyAudio()
+        stream = p.open(format=FORMAT, channels=CHANNELS, rate=RATE,
+                        input=True, frames_per_buffer=CHUNK)
 
-    def bandpass_filter(data, lowcut=50, highcut=300, fs=44100, order=5):
-        nyquist = 0.5 * fs
-        low = lowcut / nyquist
-        high = highcut / nyquist
-        b, a = scipy.signal.butter(order, [low, high], btype='band')
-        return scipy.signal.lfilter(b, a, data)
+        try:
+            while True:
+                data = stream.read(CHUNK, exception_on_overflow=False)
+                audio_data = np.frombuffer(data, dtype=np.int16)
 
-    try:
-        while True:
-            data = stream.read(CHUNK, exception_on_overflow=False)
-            audio_data = np.frombuffer(data, dtype=np.int16)
+                filtered_data = scipy.signal.lfilter(
+                    *scipy.signal.butter(5, [50 / (0.5 * 44100), 300 / (0.5 * 44100)], btype='band'), audio_data)
+                fft_data = np.abs(np.fft.fft(filtered_data))
+                max_amplitude = np.max(fft_data)
 
-            # Apply bandpass filter to focus on fan noise
-            filtered_data = bandpass_filter(audio_data)
+                recent_amplitudes.append(max_amplitude)
+                if len(recent_amplitudes) > smoothing_factor:
+                    recent_amplitudes.pop(0)
+                avg_amplitude = np.mean(recent_amplitudes)
 
-            # Compute frequency spectrum
-            fft_data = np.abs(np.fft.fft(filtered_data))
-            max_amplitude = np.max(fft_data)
+                new_status = "ON" if avg_amplitude > threshold else "OFF"
+                if new_status != self.current_status['fan_status']:
+                    self.current_status['fan_status'] = new_status
+                    self.status_updated.emit(self.current_status.copy())
 
-            # Apply moving average smoothing
-            recent_amplitudes.append(max_amplitude)
-            if len(recent_amplitudes) > smoothing_factor:
-                recent_amplitudes.pop(0)
-            avg_amplitude = np.mean(recent_amplitudes)
+                time.sleep(0.1)
+        finally:
+            stream.stop_stream()
+            stream.close()
+            p.terminate()
 
-            # Determine fan status
-            new_fan_status = "Fan ON" if avg_amplitude > threshold else "Fan OFF"
+    def process_frame(self, frame):
+        # Light detection
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        brightness = np.mean(gray)
+        light_status = "ON" if brightness > 80 else "OFF"
 
-            # Avoid rapid switching between ON/OFF
-            with fan_status_lock:
-                if new_fan_status != last_fan_status:
-                    time.sleep(1)
-                    fan_status = new_fan_status
-                    last_fan_status = new_fan_status
+        if light_status != self.current_status['light_status']:
+            self.current_status['light_status'] = light_status
+            self.status_updated.emit(self.current_status.copy())
 
-    except Exception as e:
-        print(f"[ERROR] Fan detection error: {e}")
+        # Face detection
+        blob = cv2.dnn.blobFromImage(frame, 1.0, (300, 300), (104.0, 177.0, 123.0))
+        self.net.setInput(blob)
+        detections = self.net.forward()
 
-    finally:
-        stream.stop_stream()
-        stream.close()
-        p.terminate()
-
-
-if __name__ == "__main__":
-
-    # Start fan detection in a separate thread
-    fan_thread = threading.Thread(target=detect_fan_status, daemon=True)
-    fan_thread.start()
-
-    # Create LBPH Face Recognizer
-    recognizer = cv2.face.LBPHFaceRecognizer_create()
-    recognizer.read('trainer.yml')
-
-    # Load Deep Learning Face Detector
-    net = cv2.dnn.readNetFromCaffe(".\\real-time-face-recognition\\deploy.prototxt",
-                                   ".\\real-time-face-recognition\\res10_300x300_ssd_iter_140000.caffemodel")
-
-    font = cv2.FONT_HERSHEY_SIMPLEX
-
-    # Load user names from JSON
-    names = ['Unknown']
-    try:
-        with open('names.json', 'r') as fs:
-            users = json.load(fs)
-    except Exception as e:
-        print(f"[ERROR] Unable to load names.json: {e}")
-
-    cam = cv2.VideoCapture(0)
-    cam.set(3, 1280)
-    cam.set(4, 720)
-
-    while True:
-        ret, img = cam.read()
-        h, w = img.shape[:2]
-
-        light_status = detect_light_status(img)
-
-        # Convert to blob for DNN model
-        blob = cv2.dnn.blobFromImage(img, scalefactor=1.0, size=(300, 300), mean=(104.0, 177.0, 123.0))
-        net.setInput(blob)
-        detections = net.forward()
+        faces = []
+        current_person = {"name": "Unknown", "roll_no": "N/A", "contact": "N/A"}
 
         for i in range(detections.shape[2]):
             confidence = detections[0, 0, i, 2]
             if confidence > 0.6:
+                (h, w) = frame.shape[:2]
                 box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
                 (x, y, x1, y1) = box.astype("int")
+                faces.append((x, y, x1, y1))
 
-                cv2.rectangle(img, (x, y), (x1, y1), (0, 255, 0), 2)
-
-                gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                # Face recognition
                 face_roi = gray[y:y1, x:x1]
-
                 try:
-                    id, confidence = recognizer.predict(face_roi)
+                    id, confidence = self.recognizer.predict(face_roi)
                     if confidence < 50:
-                        user = users.get(str(id), {"name": "Unknown", "roll_no": "N/A", "contact": "N/A"})
-                        name = f"Name: {user['name']}"
-                        roll_no = f"Roll No: {user['roll_no']}"
-                        contact = f"Contact: {user['contact']}"
-                        confidence_text = f"Confidence: {round(100 - confidence)}%"
-                    else:
-                        name, roll_no, contact, confidence_text = "Unknown", "N/A", "N/A", "N/A"
-                except Exception as e:
-                    print(e)
-                    name, roll_no, contact, confidence_text = "Unknown", "N/A", "N/A", "N/A"
+                        current_person = self.users.get(str(id),
+                                                        {"name": "Unknown", "roll_no": "N/A", "contact": "N/A"})
+                except:
+                    pass
 
-                height, width, _ = img.shape
-                x_offset = 10
-                y_offset = height - 80
+                # Draw rectangle
+                cv2.rectangle(frame, (x, y), (x1, y1), (0, 255, 0), 2)
 
-                cv2.putText(img, name, (x_offset, y_offset), font, 0.8, (255, 255, 255), 2)
-                cv2.putText(img, roll_no, (x_offset, y_offset + 25), font, 0.8, (255, 255, 255), 2)
-                cv2.putText(img, contact, (x_offset, y_offset + 50), font, 0.8, (255, 255, 255), 2)
-                cv2.putText(img, confidence_text, (x_offset, y_offset + 75), font, 0.8, (255, 255, 0), 1)
+        # Update headcount
+        if len(faces) != self.current_status['headcount']:
+            self.current_status['headcount'] = len(faces)
+            self.status_updated.emit(self.current_status.copy())
 
-        # Display light and fan status
-        cv2.putText(img, light_status, (50, 50), font, 1, (0, 255, 255), 2)
+        # Emit signals
+        self.person_detected.emit(current_person)
+        self.frame_processed.emit(frame)
 
-        with fan_status_lock:
-            cv2.putText(img, fan_status, (50, 100), font, 1, (255, 0, 0), 2)
+        return frame
 
-        cv2.imshow('Face Recognition', img)
+    def start_processing(self):
+        self.running = True
+        self.cap = cv2.VideoCapture(0)
+        while self.running:
+            ret, frame = self.cap.read()
+            if ret:
+                self.process_frame(frame)
+            time.sleep(0.03)  # ~30fps
 
-        if cv2.waitKey(10) & 0xFF == 27:
-            break
-
-    print("\n[INFO] Exiting Program.")
-    cam.release()
-    cv2.destroyAllWindows()
+    def stop_processing(self):
+        self.running = False
+        if hasattr(self, 'cap'):
+            self.cap.release()
