@@ -1,10 +1,12 @@
 import os
 import sys
+import threading
 
 import cv2
 from PyQt5 import QtWidgets, QtGui, QtSvg
 
 from FaceCaptureWorker import FaceCaptureWorker
+from FaceRecognizer import FaceRecognizer
 from FaceTrainer import FaceTrainer
 from resources_rc import *
 
@@ -353,10 +355,9 @@ class Dashboard(QtWidgets.QMainWindow):
 
         return card
 
-    ###########################################################################
-    # LIVE FEED PAGE (Updated with proper status panel)
-    ###########################################################################
     def create_live_feed_page(self):
+        self.face_recognizer = FaceRecognizer()
+
         page = QtWidgets.QWidget()
         page.setObjectName("liveFeedPage")
         layout = QtWidgets.QVBoxLayout(page)
@@ -407,7 +408,7 @@ class Dashboard(QtWidgets.QMainWindow):
         content_layout = QtWidgets.QHBoxLayout()
         content_layout.setSpacing(20)
 
-        # Video feed section (2/3 width)
+        # Video feed section
         video_container = QtWidgets.QFrame()
         video_container.setObjectName("videoContainer")
         video_layout = QtWidgets.QVBoxLayout(video_container)
@@ -419,18 +420,15 @@ class Dashboard(QtWidgets.QMainWindow):
         self.video_label.setMinimumSize(640, 480)
         self.video_label.setText("Camera loading or not available...")
 
-        # Control buttons centered below video
+        # Control buttons
         btn_container = QtWidgets.QWidget()
         btn_layout = QtWidgets.QHBoxLayout(btn_container)
         btn_layout.setContentsMargins(0, 10, 0, 0)
 
         self.start_btn = QtWidgets.QPushButton("Start Camera")
         self.start_btn.setObjectName("actionButton")
-        self.start_btn.clicked.connect(self.start_camera)
-
         self.stop_btn = QtWidgets.QPushButton("Stop Camera")
         self.stop_btn.setObjectName("actionButton")
-        self.stop_btn.clicked.connect(self.stop_camera)
         self.stop_btn.setEnabled(False)
 
         btn_layout.addStretch()
@@ -441,19 +439,17 @@ class Dashboard(QtWidgets.QMainWindow):
         video_layout.addWidget(self.video_label)
         video_layout.addWidget(btn_container)
 
-        # Status panel (1/3 width) - with proper borders
+        # Status panel
         status_container = QtWidgets.QFrame()
         status_container.setObjectName("statusContainer")
         status_layout = QtWidgets.QVBoxLayout(status_container)
         status_layout.setContentsMargins(15, 15, 15, 15)
         status_layout.setSpacing(15)
 
-        # System Status section
         status_title = QtWidgets.QLabel("System Status")
         status_title.setObjectName("statusTitle")
         status_title.setAlignment(QtCore.Qt.AlignCenter)
 
-        # Status items in a framed container
         status_items = QtWidgets.QFrame()
         status_items.setObjectName("statusItems")
         items_layout = QtWidgets.QVBoxLayout(status_items)
@@ -468,7 +464,6 @@ class Dashboard(QtWidgets.QMainWindow):
         items_layout.addWidget(self.fan_status)
         items_layout.addWidget(self.headcount)
 
-        # Detected Person section
         person_title = QtWidgets.QLabel("Detected Person")
         person_title.setObjectName("statusTitle")
         person_title.setAlignment(QtCore.Qt.AlignCenter)
@@ -478,7 +473,6 @@ class Dashboard(QtWidgets.QMainWindow):
         self.person_label.setAlignment(QtCore.Qt.AlignCenter)
         self.person_label.setMinimumHeight(100)
 
-        # Add to status layout
         status_layout.addWidget(status_title)
         status_layout.addWidget(status_items)
         status_layout.addSpacing(10)
@@ -486,30 +480,67 @@ class Dashboard(QtWidgets.QMainWindow):
         status_layout.addWidget(self.person_label)
         status_layout.addStretch()
 
-        # Add to main layout with 2:1 ratio
-        content_layout.addWidget(video_container, 2)  # 2 parts width
-        content_layout.addWidget(status_container, 1)  # 1 part width
+        content_layout.addWidget(video_container, 2)
+        content_layout.addWidget(status_container, 1)
         layout.addLayout(content_layout, 1)
+
+        # SIGNAL CONNECTIONS
+        self.face_recognizer.frame_processed.connect(self.update_video_feed)
+        self.face_recognizer.status_updated.connect(self.update_status_info)
+        self.face_recognizer.person_detected.connect(self.update_person_info)
+
+        # BUTTON HANDLERS
+        def start_camera():
+            self.start_btn.setEnabled(False)
+            self.stop_btn.setEnabled(True)
+            self.camera_thread = threading.Thread(target=self.face_recognizer.start_processing, daemon=True)
+            self.camera_thread.start()
+
+        def stop_camera():
+            self.face_recognizer.stop_processing()
+            self.start_btn.setEnabled(True)
+            self.stop_btn.setEnabled(False)
+
+        self.start_btn.clicked.connect(start_camera)
+        self.stop_btn.clicked.connect(stop_camera)
 
         self.stacked_widget.addWidget(page)
 
+    @QtCore.pyqtSlot(object)
+    def update_video_feed(self, frame):
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        h, w, ch = rgb.shape
+        bytes_per_line = ch * w
+        qt_image = QtGui.QImage(rgb.data, w, h, bytes_per_line, QtGui.QImage.Format_RGB888)
+        self.video_label.setPixmap(QtGui.QPixmap.fromImage(qt_image))
+
+    @QtCore.pyqtSlot(dict)
+    def update_status_info(self, status):
+        self.light_status.findChild(QtWidgets.QLabel, "value").setText(status["light_status"])
+        self.fan_status.findChild(QtWidgets.QLabel, "value").setText(status["fan_status"])
+        self.headcount.findChild(QtWidgets.QLabel, "value").setText(str(status["headcount"]))
+
+    @QtCore.pyqtSlot(dict)
+    def update_person_info(self, person):
+        self.person_label.setText(
+            f"Name: {person['name']}\n"
+            f"Roll No: {person['roll_no']}\n"
+            f"Contact: {person['contact']}"
+        )
+
     def create_status_item(self, label, value):
-        item = QtWidgets.QWidget()
-        layout = QtWidgets.QHBoxLayout(item)
+        frame = QtWidgets.QFrame()
+        layout = QtWidgets.QHBoxLayout(frame)
         layout.setContentsMargins(0, 0, 0, 0)
-
-        lbl = QtWidgets.QLabel(label)
-        lbl.setObjectName("statusLabel")
-        lbl.setAlignment(QtCore.Qt.AlignLeft)
-
+        key = QtWidgets.QLabel(label)
         val = QtWidgets.QLabel(value)
-        val.setObjectName("statusValue")
-        val.setAlignment(QtCore.Qt.AlignRight)
-
-        layout.addWidget(lbl)
+        val.setObjectName("value")
+        key.setStyleSheet("font-size: 14px;")
+        val.setStyleSheet("font-weight: bold; font-size: 14px;")
+        layout.addWidget(key)
         layout.addStretch()
         layout.addWidget(val)
-        return item
+        return frame
 
     ###########################################################################
     # DATA ENTRY PAGE
@@ -777,7 +808,7 @@ class Dashboard(QtWidgets.QMainWindow):
         # Create a trainer instance and train
         trainer = FaceTrainer()
         trainer.train()
-        
+
         QtWidgets.QMessageBox.information(self, "Success", "Person registered successfully")
         self.clear_form()
 
