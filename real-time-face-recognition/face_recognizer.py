@@ -1,11 +1,11 @@
+import json
+import threading
+import time
+
 import cv2
 import numpy as np
-import json
-import os
 import pyaudio
-import threading
 import scipy.signal
-import time
 from PyQt5.QtCore import QObject, pyqtSignal
 
 

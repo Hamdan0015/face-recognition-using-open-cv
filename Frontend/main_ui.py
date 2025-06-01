@@ -8,6 +8,8 @@ from PyQt5 import QtWidgets, QtGui, QtSvg
 from FaceCaptureWorker import FaceCaptureWorker
 from FaceRecognizer import FaceRecognizer
 from FaceTrainer import FaceTrainer
+from VideoUploadPage import VideoUploadPage
+from VideoFaceRecognizer import VideoFaceRecognizer
 from resources_rc import *
 
 
@@ -207,7 +209,9 @@ class Dashboard(QtWidgets.QMainWindow):
         self.create_main_menu()
         self.create_live_feed_page()
         self.create_data_entry_page()
-        self.create_video_upload_page()
+        self.video_upload_page = VideoUploadPage()
+        self.stacked_widget.addWidget(self.video_upload_page)
+        # self.create_video_upload_page()
 
     ###########################################################################
     # MAIN MENU PAGE
@@ -936,11 +940,13 @@ class Dashboard(QtWidgets.QMainWindow):
     def select_video(self):
         options = QtWidgets.QFileDialog.Options()
         file_path, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self, "Select Video File", "",
-            "Video Files (*.mp4 *.avi *.mov)", options=options
+            self, "Select Video File", "", "Video Files (*.mp4 *.avi *.mov)", options=options
         )
         if file_path:
             self.video_path = file_path
+            recognizer = VideoFaceRecognizer(parent=self)
+            recognizer.recognize(self.video_path)
+
     ###########################################################################
     # UTILITY METHODS
     ###########################################################################
