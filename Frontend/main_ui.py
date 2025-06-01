@@ -1,11 +1,12 @@
-from PyQt5 import QtWidgets, QtGui, QtCore, QtSvg
-from resources_rc import *
-import sys
-import cv2
 import os
-import shutil
-import json
-import datetime
+import sys
+
+import cv2
+from PyQt5 import QtWidgets, QtGui, QtSvg
+
+from FaceCaptureWorker import FaceCaptureWorker
+from FaceTrainer import FaceTrainer
+from resources_rc import *
 
 
 ###################################################################################################
@@ -191,6 +192,9 @@ class Dashboard(QtWidgets.QMainWindow):
         self.selected_image_path = None
         self.setup_ui()
         self.apply_light_theme()
+        self.face_capture = FaceCaptureWorker()
+        self.face_capture.frame_updated.connect(self.update_image_preview)
+        self.face_capture.capture_finished.connect(self.capture_done)
 
     def setup_ui(self):
         # Stacked widget for page navigation
@@ -715,24 +719,23 @@ class Dashboard(QtWidgets.QMainWindow):
         # Update data entry page specifically
         self.update_data_entry_theme()
 
+    def update_image_preview(self, image: QtGui.QImage):
+        self.image_preview.setPixmap(QtGui.QPixmap.fromImage(image))
+
+    def capture_done(self):
+        QtWidgets.QMessageBox.information(self, "Capture Complete", "30 face images captured successfully.")
 
     def capture_image(self):
-        # Placeholder for camera capture functionality
-        # You would implement actual camera capture here
-        options = QtWidgets.QFileDialog.Options()
-        file_path, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self, "Select Face Image", "",
-            "Image Files (*.png *.jpg *.jpeg)", options=options
-        )
-        if file_path:
-            self.selected_image_path = file_path
-            pixmap = QtGui.QPixmap(file_path)
-            if not pixmap.isNull():
-                self.image_preview.setPixmap(
-                    pixmap.scaled(self.image_preview.width(), self.image_preview.height(),
-                                  QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
-                )
-                self.image_preview.setStyleSheet("border: none;")
+        name = self.full_name.text().strip()
+        roll = self.roll_no.text().strip()
+        contact = self.phone_no.text().strip()
+
+        if not all([name, roll, contact]):
+            QtWidgets.QMessageBox.warning(self, "Incomplete Info", "Please fill all fields before taking a photo.")
+            return
+
+        self.face_capture.start_capture(name, roll, contact)
+
 
     def select_image(self):
         options = QtWidgets.QFileDialog.Options()
@@ -751,14 +754,30 @@ class Dashboard(QtWidgets.QMainWindow):
                 self.image_preview.setStyleSheet("border: none;")
 
     def register_person(self):
+        name = self.full_name.text().strip()
+        roll = self.roll_no.text().strip()
+        contact = self.phone_no.text().strip()
+
         # Basic validation
-        if not all([self.full_name.text(), self.roll_no.text()]):
+        if not all([name, roll]):
             QtWidgets.QMessageBox.warning(self, "Error", "Full Name and Roll Number are required")
             return
-        if not hasattr(self, 'selected_image_path'):
+
+        # Check if either an image was uploaded OR a face was captured
+        captured_dir = "images"
+        face_id_prefix = f"User-{roll}"
+        has_captured_images = any(
+            fname.startswith(f"User-") and roll in fname for fname in os.listdir(captured_dir)) if os.path.exists(
+            captured_dir) else False
+
+        if not hasattr(self, 'selected_image_path') and not has_captured_images:
             QtWidgets.QMessageBox.warning(self, "Error", "Please capture or upload an image")
             return
 
+        # Create a trainer instance and train
+        trainer = FaceTrainer()
+        trainer.train()
+        
         QtWidgets.QMessageBox.information(self, "Success", "Person registered successfully")
         self.clear_form()
 
@@ -768,16 +787,10 @@ class Dashboard(QtWidgets.QMainWindow):
         self.phone_no.clear()
         self.image_preview.clear()
         self.image_preview.setText("Upload a clear face image")
-        self.image_preview.setStyleSheet("""
-            QLabel {
-                border: 2px dashed #aaa;
-                border-radius: 5px;
-                color: #777;
-                background-color: #f8f8f8;
-            }
-        """)
+
         if hasattr(self, 'selected_image_path'):
             del self.selected_image_path
+
     ###########################################################################
     # VIDEO UPLOAD PAGE
     ###########################################################################
