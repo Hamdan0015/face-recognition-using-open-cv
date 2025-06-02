@@ -5,9 +5,9 @@ from PIL import Image
 
 
 class FaceTrainer:
-    def __init__(self, images_path='./images/', proto_path='../real-time-face-recognition/deploy.prototxt',
-                 model_path='../real-time-face-recognition/res10_300x300_ssd_iter_140000.caffemodel',
-                 model_save_path='../real-time-face-recognition/trainer.yml'):
+    def __init__(self, images_path='./images/', proto_path='..\\real-time-face-recognition\\deploy.prototxt',
+                 model_path='..\\real-time-face-recognition\\res10_300x300_ssd_iter_140000.caffemodel',
+                 model_save_path='..\\real-time-face-recognition\\trainer.yml'):
         self.images_path = images_path
         self.proto_path = proto_path
         self.model_path = model_path

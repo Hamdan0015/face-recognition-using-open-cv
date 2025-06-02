@@ -19,10 +19,10 @@ class FaceRecognizer(QObject):
         super().__init__()
         self.running = False
         self.recognizer = cv2.face.LBPHFaceRecognizer_create()
-        self.recognizer.read('../real-time-face-recognition/trainer.yml')
+        self.recognizer.read('trainer.yml')
         self.net = cv2.dnn.readNetFromCaffe(
-            "../real-time-face-recognition/deploy.prototxt",
-            "../real-time-face-recognition/res10_300x300_ssd_iter_140000.caffemodel"
+            "..\\real-time-face-recognition\\deploy.prototxt",
+            "..\\real-time-face-recognition\\res10_300x300_ssd_iter_140000.caffemodel"
         )
         self.users = self._load_users()
         self.current_status = {

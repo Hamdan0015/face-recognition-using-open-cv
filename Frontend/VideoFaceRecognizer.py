@@ -6,10 +6,10 @@ from PyQt5.QtWidgets import QMessageBox
 
 class VideoFaceRecognizer:
     def __init__(self, parent=None):
-        self.trainer_yml_path = "../real-time-face-recognition/trainer.yml"
+        self.trainer_yml_path = "trainer.yml"
         self.names_path = "names.json"
-        self.proto_path = "../real-time-face-recognition/deploy.prototxt"
-        self.model_path = "../real-time-face-recognition/res10_300x300_ssd_iter_140000.caffemodel"
+        self.proto_path = "..\\real-time-face-recognition\\deploy.prototxt"
+        self.model_path = "..\\real-time-face-recognition\\res10_300x300_ssd_iter_140000.caffemodel"
         self.font = cv2.FONT_HERSHEY_SIMPLEX
         self.parent = parent
 

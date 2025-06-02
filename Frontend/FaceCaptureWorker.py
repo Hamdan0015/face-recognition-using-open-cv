@@ -34,8 +34,8 @@ class FaceCaptureWorker(QtCore.QObject):
 
     def load_model(self):
         self.net = cv2.dnn.readNetFromCaffe(
-            "../real-time-face-recognition/deploy.prototxt",
-            "../real-time-face-recognition/res10_300x300_ssd_iter_140000.caffemodel"
+            "..\\real-time-face-recognition\\deploy.prototxt",
+            "..\\real-time-face-recognition\\res10_300x300_ssd_iter_140000.caffemodel"
         )
 
     def start_capture(self, name: str, roll: str, contact: str):
